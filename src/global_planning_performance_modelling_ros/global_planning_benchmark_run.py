@@ -51,8 +51,16 @@ class BenchmarkRun(object):
 
         # take run parameters from parameters_combination_dictionary
         global_planner_name = self.run_parameters['global_planner_name']
-        # use_dijkstra_name = self.run_parameters['use_dijkstra']
-        # print(global_planner_name) #first printing NavFn then printing GlobalPlanner
+
+        if global_planner_name == 'GlobalPlanner':
+            use_dijkstra = self.run_parameters['use_dijkstra']
+        elif global_planner_name == 'SBPLLatticePlanner':
+            sbpl_primitives_directory_path = self.benchmark_configuration['sbpl_primitives_path']
+            sbpl_primitives_name = self.run_parameters['sbpl_primitives_name']
+            sbpl_primitives_file_path = path.join(sbpl_primitives_directory_path, sbpl_primitives_name)
+            planner_type = self.run_parameters['planner_type']
+        else:
+            raise ValueError()
 
         # run variables
         self.aborted = False
@@ -67,24 +75,24 @@ class BenchmarkRun(object):
         # components original configuration paths
         components_configurations_folder = path.expanduser(self.benchmark_configuration['components_configurations_folder'])
         original_supervisor_configuration_path = path.join(components_configurations_folder, self.benchmark_configuration['components_configuration']['supervisor'])
-        original_move_base_configuration_path = path.join(components_configurations_folder, self.benchmark_configuration['components_configuration']['move_base'][global_planner_name])
+        original_move_base_configuration_path = path.join(components_configurations_folder, self.benchmark_configuration['components_configuration']['move_base'])
+        original_move_base_global_planner_configuration_path = path.join(components_configurations_folder, self.benchmark_configuration['components_configuration']['move_base_global_planner'])
         self.original_rviz_configuration_path = path.join(components_configurations_folder, self.benchmark_configuration['components_configuration']['rviz'])
         original_robot_urdf_path = path.join(environment_folder, "gazebo", "robot.urdf")
 
-
         # components configuration relative paths
         supervisor_configuration_relative_path = path.join("components_configuration", self.benchmark_configuration['components_configuration']['supervisor'])
-        move_base_configuration_relative_path = path.join("components_configuration", self.benchmark_configuration['components_configuration']['move_base'][global_planner_name])
+        move_base_configuration_relative_path = path.join("components_configuration", self.benchmark_configuration['components_configuration']['move_base'])
+        move_base_global_planner_configuration_relative_path = path.join("components_configuration", self.benchmark_configuration['components_configuration']['move_base_global_planner'])
         robot_realistic_urdf_relative_path = path.join("components_configuration", "gazebo", "robot_realistic.urdf")
         # robot_gt_urdf_relative_path = path.join("components_configuration", "gazebo", "robot_gt.urdf")                            #we are not using simulation right now
-
 
         # components configuration paths in run folder
         self.supervisor_configuration_path = path.join(self.run_output_folder, supervisor_configuration_relative_path)
         self.move_base_configuration_path = path.join(self.run_output_folder, move_base_configuration_relative_path)
+        self.move_base_global_planner_configuration_path = path.join(self.run_output_folder, move_base_global_planner_configuration_relative_path)
         self.robot_realistic_urdf_path = path.join(self.run_output_folder, robot_realistic_urdf_relative_path)
         # self.robot_gt_urdf_path = path.join(self.run_output_folder, robot_gt_urdf_relative_path)                                  #we are not using simulation right now
-
 
         # copy the configuration of the supervisor to the run folder and update its parameters
         with open(original_supervisor_configuration_path) as supervisor_configuration_file:
@@ -98,6 +106,27 @@ class BenchmarkRun(object):
             yaml.dump(supervisor_configuration, supervisor_configuration_file, default_flow_style=False)
 
         # copy the configuration of move_base to the run folder
+        # move_base global planner config
+        with open(original_move_base_global_planner_configuration_path) as move_base_global_planner_configuration_file:
+            move_base_global_planner_configuration = yaml.load(move_base_global_planner_configuration_file)
+
+        if global_planner_name == 'GlobalPlanner':
+            move_base_global_planner_configuration['GlobalPlanner']['use_dijkstra'] = use_dijkstra
+            move_base_global_planner_configuration['GlobalPlanner']['use_grid_path'] = not use_dijkstra
+            # todo
+        elif global_planner_name == 'SBPLLatticePlanner':
+            move_base_global_planner_configuration['SBPLLatticePlanner']['planner_type'] = planner_type
+            move_base_global_planner_configuration['SBPLLatticePlanner']['primitive_filename'] = sbpl_primitives_file_path
+            # todo
+        else:
+            raise ValueError()
+
+        if not path.exists(path.dirname(self.move_base_global_planner_configuration_path)):
+            os.makedirs(path.dirname(self.move_base_global_planner_configuration_path))
+        with open(self.move_base_global_planner_configuration_path, 'w') as move_base_global_planner_configuration_file:
+            yaml.dump(move_base_global_planner_configuration, move_base_global_planner_configuration_file, default_flow_style=False)
+
+        # move_base general config (costmaps, local_planner, etc)
         if not path.exists(path.dirname(self.move_base_configuration_path)):
             os.makedirs(path.dirname(self.move_base_configuration_path))
         shutil.copyfile(original_move_base_configuration_path, self.move_base_configuration_path)
@@ -153,6 +182,7 @@ class BenchmarkRun(object):
         }
         navigation_params = {
             'params_file': self.move_base_configuration_path,
+            'global_planner_params_file': self.move_base_global_planner_configuration_path,
             'map_file': self.map_info_file_path,
             'output': "screen"
         }

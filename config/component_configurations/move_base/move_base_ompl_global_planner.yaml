@@ -1,0 +1,2 @@
+base_global_planner: ompl_global_planner/OmplGlobalPlanner
+
